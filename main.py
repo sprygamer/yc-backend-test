@@ -1,10 +1,11 @@
 import mysql.connector
 from mysql.connector import Error
-import face_recognition
+import cv2
+import numpy as np
 import sys
 
 print("Python version:", sys.version)
-print("🟢 face_recognition library loaded successfully!")
+print("🟢 OpenCV and NumPy loaded successfully!")
 
 def test_db_connection():
     try:
