@@ -10,7 +10,7 @@ import json
 app = Flask(__name__)
 
 # 🔑 Apni SerpApi key yahan dalein (serpapi.com se free account banakar milegi)
-SERPAPI_KEY = "YOUR_SERPAPI_FREE_KEY_HERE"
+SERPAPI_KEY = "969eab93ccbfc8b3c9603c4206ca888acd157625cf6fd71dd7e938d17ff14748"
 
 def get_db_connection():
     try:
