@@ -1,0 +1,3 @@
+mysql-connector-python
+face-recognition-models
+face_recognition
