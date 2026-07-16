@@ -5,11 +5,11 @@ import cv2
 import numpy as np
 import requests
 from flask import Flask, jsonify, request
-import json
+import threading  # 🚀 Background task chalane ke liye
 
 app = Flask(__name__)
 
-# 🔑 Apni SerpApi key yahan dalein (serpapi.com se free account banakar milegi)
+# SerpApi Key
 SERPAPI_KEY = "969eab93ccbfc8b3c9603c4206ca888acd157625cf6fd71dd7e938d17ff14748"
 
 def get_db_connection():
@@ -33,10 +33,9 @@ def download_image(url):
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             return img
     except Exception as e:
-        print(f"Error downloading image from {url}: {e}")
+        print(f"Error downloading image: {e}")
     return None
 
-# 🌐 Internet Image Crawling Function (Using SerpApi Google Lens)
 def crawl_image_on_internet(image_url):
     if not SERPAPI_KEY or "YOUR_SERPAPI" in SERPAPI_KEY:
         print("⚠️ SerpApi Key not configured. Skipping internet crawl.")
@@ -44,74 +43,30 @@ def crawl_image_on_internet(image_url):
 
     print(f"🔍 Crawling image on internet via SerpApi...")
     try:
-        # SerpApi Google Lens Endpoint
         url = "https://serpapi.com/search.json"
         params = {
             "engine": "google_lens",
             "url": image_url,
             "api_key": SERPAPI_KEY
         }
-        
         response = requests.get(url, params=params, timeout=15)
         if response.status_code == 200:
             results = response.json()
             leaked_links = []
-            
-            # Google Lens ke visual matches se page links nikalna
             visual_matches = results.get("visual_matches", [])
             for match in visual_matches:
                 link = match.get("link")
                 title = match.get("title", "Unknown Source")
                 if link and link not in leaked_links:
                     leaked_links.append(f"{title}: {link}")
-            
-            # Sirf top 5 results limit rakhte hain taaki DB safe rahe
             return leaked_links[:5]
-        else:
-            print(f"🔴 SerpApi Error: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"🔴 Error during crawling: {e}")
     return []
 
-@app.route('/')
-def home():
-    return jsonify({
-        "status": "Online",
-        "message": "YCEA Safety AI Backend with Internet Search is running!"
-    })
-
-@app.route('/kyc-submit', methods=['POST'])
-def kyc_submit():
-    if request.is_json:
-        data = request.get_json()
-    else:
-        data = request.form.to_dict()
-
-    print("\n--- NEW SUBMISSION RECEIVED ---")
-    
-    detected_urls = []
-    user_name = "Unknown User"
-
-    for key, value in data.items():
-        if 'name' in key.lower():
-            user_name = value
-        if isinstance(value, str) and (value.startswith('http://') or value.startswith('https://')):
-            detected_urls.append((key, value))
-
-    selfie_url = None
-    id_url = None
-
-    for field_name, url in detected_urls:
-        if 'selfie' in field_name.lower():
-            selfie_url = url
-        elif 'id' in field_name.lower() or 'identity' in field_name.lower():
-            id_url = url
-    
-    if not selfie_url and len(detected_urls) > 0:
-        selfie_url = detected_urls[0][1]
-    if not id_url and len(detected_urls) > 1:
-        id_url = detected_urls[1][1]
-
+# 🚀 Ye function background mein aaram se kaam karega bina Elementor ko rok ke
+def process_kyc_async(user_name, selfie_url, id_url):
+    print(f"⚡ Background processing started for {user_name}...")
     faces_count = 0
     kyc_status = "Pending"
 
@@ -139,12 +94,10 @@ def kyc_submit():
     found_leaks = []
     if selfie_url:
         found_leaks = crawl_image_on_internet(selfie_url)
-        print(f"Total leaks found: {len(found_leaks)}")
 
-    # Leaks array ko string mein convert karenge DB mein save karne ke liye
     leaks_str = ", ".join(found_leaks) if found_leaks else "No Leaks Found"
 
-    # 3. Save to Database
+    # 3. Database Insertion
     db = get_db_connection()
     if db:
         try:
@@ -155,7 +108,7 @@ def kyc_submit():
             """
             cursor.execute(query, (user_name, selfie_url, id_url, kyc_status, faces_count, leaks_str))
             db.commit()
-            print("🟢 Data and Leak reports saved successfully to database!")
+            print(f"🟢 Saved {user_name}'s data to DB with {len(found_leaks)} leaks.")
             cursor.close()
             db.close()
         except Exception as db_err:
@@ -163,12 +116,48 @@ def kyc_submit():
     else:
         print("🔴 DB Connection unavailable.")
 
+@app.route('/')
+def home():
+    return jsonify({"status": "Online"})
+
+@app.route('/kyc-submit', methods=['POST'])
+def kyc_submit():
+    # Parse data instantly
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form.to_dict()
+
+    detected_urls = []
+    user_name = "Unknown User"
+
+    for key, value in data.items():
+        if 'name' in key.lower():
+            user_name = value
+        if isinstance(value, str) and (value.startswith('http://') or value.startswith('https://')):
+            detected_urls.append((key, value))
+
+    selfie_url = None
+    id_url = None
+
+    for field_name, url in detected_urls:
+        if 'selfie' in field_name.lower():
+            selfie_url = url
+        elif 'id' in field_name.lower() or 'identity' in field_name.lower():
+            id_url = url
+    
+    if not selfie_url and len(detected_urls) > 0:
+        selfie_url = detected_urls[0][1]
+    if not id_url and len(detected_urls) > 1:
+        id_url = detected_urls[1][1]
+
+    # 🚀 Sabse important: Background process shuru karke turant response bhejdo (0.1 seconds mein)
+    threading.Thread(target=process_kyc_async, args=(user_name, selfie_url, id_url)).start()
+
+    # WordPress ko response de do taaki green checkmark aa jaye
     return jsonify({
         "status": "success",
-        "message": "Verification complete!",
-        "user": user_name,
-        "face_status": kyc_status,
-        "leaks_detected": len(found_leaks)
+        "message": "Form received successfully!"
     }), 200
 
 if __name__ == "__main__":
