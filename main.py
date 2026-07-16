@@ -5,11 +5,11 @@ import cv2
 import numpy as np
 import requests
 from flask import Flask, jsonify, request
-import threading  # 🚀 Background task chalane ke liye
+import threading  # Background task chalane ke liye
 
 app = Flask(__name__)
 
-# SerpApi Key
+# 🔑 Apni SerpApi key yahan dalein (serpapi.com se free account banakar milegi)
 SERPAPI_KEY = "969eab93ccbfc8b3c9603c4206ca888acd157625cf6fd71dd7e938d17ff14748"
 
 def get_db_connection():
@@ -36,12 +36,13 @@ def download_image(url):
         print(f"Error downloading image: {e}")
     return None
 
+# 🌐 Upgraded Deep Crawling Function (Bohot saare links nikalne ke liye)
 def crawl_image_on_internet(image_url):
     if not SERPAPI_KEY or "YOUR_SERPAPI" in SERPAPI_KEY:
         print("⚠️ SerpApi Key not configured. Skipping internet crawl.")
         return []
 
-    print(f"🔍 Crawling image on internet via SerpApi...")
+    print(f"🔍 Deep crawling image on internet via SerpApi...")
     try:
         url = "https://serpapi.com/search.json"
         params = {
@@ -53,18 +54,40 @@ def crawl_image_on_internet(image_url):
         if response.status_code == 200:
             results = response.json()
             leaked_links = []
+            
+            # 1. SOURCE 1: Visual Matches (Direct similar images)
             visual_matches = results.get("visual_matches", [])
             for match in visual_matches:
                 link = match.get("link")
-                title = match.get("title", "Unknown Source")
-                if link and link not in leaked_links:
+                title = match.get("title", "Visual Match")
+                if link and link not in [l.split(": ")[1] for l in leaked_links if ": " in l]:
                     leaked_links.append(f"{title}: {link}")
-            return leaked_links[:5]
+
+            # 2. SOURCE 2: Knowledge Graph (Celebrity ke official pages/links)
+            knowledge_graph = results.get("knowledge_graph", [])
+            for entity in knowledge_graph:
+                link = entity.get("link")
+                title = entity.get("title", "Knowledge Source")
+                if link and link not in [l.split(": ")[1] for l in leaked_links if ": " in l]:
+                    leaked_links.append(f"{title}: {link}")
+
+            # 3. SOURCE 3: Inverse Image Search (Web resources)
+            reverse_image_search = results.get("reverse_image_search", {}).get("pages_with_matching_images", [])
+            for page in reverse_image_search:
+                link = page.get("url")
+                title = page.get("title", "Web Page Match")
+                if link and link not in [l.split(": ")[1] for l in leaked_links if ": " in l]:
+                    leaked_links.append(f"{title}: {link}")
+            
+            # Top 10 unique links limit kar rahe hain
+            return leaked_links[:10]
+        else:
+            print(f"🔴 SerpApi Error: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"🔴 Error during crawling: {e}")
+        print(f"🔴 Error during deep crawling: {e}")
     return []
 
-# 🚀 Ye function background mein aaram se kaam karega bina Elementor ko rok ke
+# 🚀 Async Process (Ye background mein chalta rahega)
 def process_kyc_async(user_name, selfie_url, id_url):
     print(f"⚡ Background processing started for {user_name}...")
     faces_count = 0
@@ -90,14 +113,14 @@ def process_kyc_async(user_name, selfie_url, id_url):
         except Exception as e:
             kyc_status = "Error"
 
-    # 2. Internet Crawling (Reverse Image Search)
+    # 2. Deep Internet Crawling (Upgraded Logic)
     found_leaks = []
     if selfie_url:
         found_leaks = crawl_image_on_internet(selfie_url)
 
     leaks_str = ", ".join(found_leaks) if found_leaks else "No Leaks Found"
 
-    # 3. Database Insertion
+    # 3. Save to MySQL Database
     db = get_db_connection()
     if db:
         try:
@@ -108,7 +131,7 @@ def process_kyc_async(user_name, selfie_url, id_url):
             """
             cursor.execute(query, (user_name, selfie_url, id_url, kyc_status, faces_count, leaks_str))
             db.commit()
-            print(f"🟢 Saved {user_name}'s data to DB with {len(found_leaks)} leaks.")
+            print(f"🟢 Successfully saved {user_name} to DB with {len(found_leaks)} leaks!")
             cursor.close()
             db.close()
         except Exception as db_err:
@@ -118,11 +141,10 @@ def process_kyc_async(user_name, selfie_url, id_url):
 
 @app.route('/')
 def home():
-    return jsonify({"status": "Online"})
+    return jsonify({"status": "Online", "message": "Deep crawling enabled!"})
 
 @app.route('/kyc-submit', methods=['POST'])
 def kyc_submit():
-    # Parse data instantly
     if request.is_json:
         data = request.get_json()
     else:
@@ -151,13 +173,12 @@ def kyc_submit():
     if not id_url and len(detected_urls) > 1:
         id_url = detected_urls[1][1]
 
-    # 🚀 Sabse important: Background process shuru karke turant response bhejdo (0.1 seconds mein)
+    # Background thread trigger karna taaki user ko wait na karna pade
     threading.Thread(target=process_kyc_async, args=(user_name, selfie_url, id_url)).start()
 
-    # WordPress ko response de do taaki green checkmark aa jaye
     return jsonify({
         "status": "success",
-        "message": "Form received successfully!"
+        "message": "Form received and processing started!"
     }), 200
 
 if __name__ == "__main__":
