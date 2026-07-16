@@ -1,11 +1,11 @@
+import os
 import mysql.connector
 from mysql.connector import Error
 import cv2
 import numpy as np
-import sys
+from flask import Flask, jsonify
 
-print("Python version:", sys.version)
-print("🟢 OpenCV and NumPy loaded successfully!")
+app = Flask(__name__)
 
 def test_db_connection():
     try:
@@ -16,10 +16,23 @@ def test_db_connection():
             password='8jkSuhve04' 
         )
         if connection.is_connected():
-            print("🟢 BINGO! Render is successfully connected to Hostinger WordPress Database!")
             connection.close()
+            return True
     except Error as e:
-        print("🔴 Database connection failed. Error:", e)
+        print("🔴 DB Connection failed:", e)
+        return False
+    return False
+
+@app.route('/')
+def home():
+    db_status = "Connected 🟢" if test_db_connection() else "Failed 🔴"
+    return jsonify({
+        "status": "Online",
+        "database": db_status,
+        "message": "YCEA Analytics Backend is running perfectly!"
+    })
 
 if __name__ == "__main__":
-    test_db_connection()
+    # Render automatic PORT environment variable deta hai, hum wahi use karenge
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
