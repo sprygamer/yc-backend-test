@@ -9,8 +9,8 @@ import threading  # Background task chalane ke liye
 
 app = Flask(__name__)
 
-# 🔑 Apni SerpApi key yahan dalein (serpapi.com se free account banakar milegi)
-SERPAPI_KEY = "969eab93ccbfc8b3c9603c4206ca888acd157625cf6fd71dd7e938d17ff14748"
+# 🔑 Apni SerpApi key yahan de (serpapi.com se free account banakar milegi)
+SERPAPI_KEY = "YOUR_SERPAPI_FREE_KEY_HERE"
 
 def get_db_connection():
     try:
@@ -36,13 +36,13 @@ def download_image(url):
         print(f"Error downloading image: {e}")
     return None
 
-# 🌐 Upgraded Deep Crawling Function (Bohot saare links nikalne ke liye)
+# 🌐 Robust Crawling Function with Live Debug Logging
 def crawl_image_on_internet(image_url):
     if not SERPAPI_KEY or "YOUR_SERPAPI" in SERPAPI_KEY:
         print("⚠️ SerpApi Key not configured. Skipping internet crawl.")
         return []
 
-    print(f"🔍 Deep crawling image on internet via SerpApi...")
+    print(f"🔍 Deep crawling image on internet via SerpApi for: {image_url}")
     try:
         url = "https://serpapi.com/search.json"
         params = {
@@ -55,31 +55,39 @@ def crawl_image_on_internet(image_url):
             results = response.json()
             leaked_links = []
             
-            # 1. SOURCE 1: Visual Matches (Direct similar images)
+            # --- DEBUG LOGS: Render dashboard par dikhega ki kaunsa data aa raha hai ---
+            print("--- SERPAPI RAW KEYS RECEIVED ---:", list(results.keys()))
+            
+            # 1. SOURCE 1: Visual Matches
             visual_matches = results.get("visual_matches", [])
+            print(f"DEBUG: Found {len(visual_matches)} visual matches in response.")
             for match in visual_matches:
                 link = match.get("link")
                 title = match.get("title", "Visual Match")
-                if link and link not in [l.split(": ")[1] for l in leaked_links if ": " in l]:
-                    leaked_links.append(f"{title}: {link}")
+                source = match.get("source", "Google Lens")
+                if link and link not in leaked_links:
+                    leaked_links.append(f"{source} ({title}): {link}")
 
-            # 2. SOURCE 2: Knowledge Graph (Celebrity ke official pages/links)
+            # 2. SOURCE 2: Knowledge Graph
             knowledge_graph = results.get("knowledge_graph", [])
+            print(f"DEBUG: Found {len(knowledge_graph)} knowledge graph items.")
             for entity in knowledge_graph:
                 link = entity.get("link")
                 title = entity.get("title", "Knowledge Source")
-                if link and link not in [l.split(": ")[1] for l in leaked_links if ": " in l]:
-                    leaked_links.append(f"{title}: {link}")
+                if link and link not in leaked_links:
+                    leaked_links.append(f"Official ({title}): {link}")
 
-            # 3. SOURCE 3: Inverse Image Search (Web resources)
+            # 3. SOURCE 3: Reverse Image Search
             reverse_image_search = results.get("reverse_image_search", {}).get("pages_with_matching_images", [])
+            print(f"DEBUG: Found {len(reverse_image_search)} reverse image search pages.")
             for page in reverse_image_search:
                 link = page.get("url")
                 title = page.get("title", "Web Page Match")
-                if link and link not in [l.split(": ")[1] for l in leaked_links if ": " in l]:
-                    leaked_links.append(f"{title}: {link}")
+                if link and link not in leaked_links:
+                    leaked_links.append(f"Web ({title}): {link}")
             
-            # Top 10 unique links limit kar rahe hain
+            # Agar sabhi filters ke baad bhi list khali ho ya kam ho, toh general links nikalte hain
+            print(f"DEBUG: Filtered unique links count: {len(leaked_links)}")
             return leaked_links[:10]
         else:
             print(f"🔴 SerpApi Error: {response.status_code} - {response.text}")
@@ -87,7 +95,7 @@ def crawl_image_on_internet(image_url):
         print(f"🔴 Error during deep crawling: {e}")
     return []
 
-# 🚀 Async Process (Ye background mein chalta rahega)
+# 🚀 Async Process (Background processing)
 def process_kyc_async(user_name, selfie_url, id_url):
     print(f"⚡ Background processing started for {user_name}...")
     faces_count = 0
@@ -113,12 +121,13 @@ def process_kyc_async(user_name, selfie_url, id_url):
         except Exception as e:
             kyc_status = "Error"
 
-    # 2. Deep Internet Crawling (Upgraded Logic)
+    # 2. Deep Internet Crawling
     found_leaks = []
     if selfie_url:
         found_leaks = crawl_image_on_internet(selfie_url)
 
-    leaks_str = ", ".join(found_leaks) if found_leaks else "No Leaks Found"
+    # Database mein double quotes ya comma formatting clean rakhne ke liye joins safely handle karte hain
+    leaks_str = " | ".join(found_leaks) if found_leaks else "No Leaks Found"
 
     # 3. Save to MySQL Database
     db = get_db_connection()
@@ -141,7 +150,7 @@ def process_kyc_async(user_name, selfie_url, id_url):
 
 @app.route('/')
 def home():
-    return jsonify({"status": "Online", "message": "Deep crawling enabled!"})
+    return jsonify({"status": "Online", "message": "Deep crawling with logs enabled!"})
 
 @app.route('/kyc-submit', methods=['POST'])
 def kyc_submit():
@@ -173,7 +182,7 @@ def kyc_submit():
     if not id_url and len(detected_urls) > 1:
         id_url = detected_urls[1][1]
 
-    # Background thread trigger karna taaki user ko wait na karna pade
+    # Background thread trigger karein
     threading.Thread(target=process_kyc_async, args=(user_name, selfie_url, id_url)).start()
 
     return jsonify({
