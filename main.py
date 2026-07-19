@@ -9,7 +9,7 @@ import threading  # Background task chalane ke liye
 
 app = Flask(__name__)
 
-# 🔑 Apni SerpApi key yahan de (serpapi.com se free account banakar milegi)
+# 🔑 Apni SerpApi key yahan de
 SERPAPI_KEY = "969eab93ccbfc8b3c9603c4206ca888acd157625cf6fd71dd7e938d17ff14748"
 
 def get_db_connection():
@@ -36,7 +36,7 @@ def download_image(url):
         print(f"Error downloading image: {e}")
     return None
 
-# 🌐 Robust Crawling Function with Live Debug Logging
+# 🌐 Robust Crawling Function
 def crawl_image_on_internet(image_url):
     if not SERPAPI_KEY or "YOUR_SERPAPI" in SERPAPI_KEY:
         print("⚠️ SerpApi Key not configured. Skipping internet crawl.")
@@ -55,7 +55,6 @@ def crawl_image_on_internet(image_url):
             results = response.json()
             leaked_links = []
             
-            # --- DEBUG LOGS: Render dashboard par dikhega ki kaunsa data aa raha hai ---
             print("--- SERPAPI RAW KEYS RECEIVED ---:", list(results.keys()))
             
             # 1. SOURCE 1: Visual Matches
@@ -86,7 +85,6 @@ def crawl_image_on_internet(image_url):
                 if link and link not in leaked_links:
                     leaked_links.append(f"Web ({title}): {link}")
             
-            # Agar sabhi filters ke baad bhi list khali ho ya kam ho, toh general links nikalte hain
             print(f"DEBUG: Filtered unique links count: {len(leaked_links)}")
             return leaked_links[:10]
         else:
@@ -95,9 +93,9 @@ def crawl_image_on_internet(image_url):
         print(f"🔴 Error during deep crawling: {e}")
     return []
 
-# 🚀 Async Process (Background processing)
-def process_kyc_async(user_name, selfie_url, id_url):
-    print(f"⚡ Background processing started for {user_name}...")
+# 🚀 Async Process (Background processing) WITH EMAIL SUPPORT
+def process_kyc_async(user_name, selfie_url, id_url, user_email):
+    print(f"⚡ Background processing started for {user_name} ({user_email})...")
     faces_count = 0
     kyc_status = "Pending"
 
@@ -126,21 +124,20 @@ def process_kyc_async(user_name, selfie_url, id_url):
     if selfie_url:
         found_leaks = crawl_image_on_internet(selfie_url)
 
-    # Database mein double quotes ya comma formatting clean rakhne ke liye joins safely handle karte hain
     leaks_str = " | ".join(found_leaks) if found_leaks else "No Leaks Found"
 
-    # 3. Save to MySQL Database
+    # 3. Save to MySQL Database (UPDATED QUERY WITH EMAIL)
     db = get_db_connection()
     if db:
         try:
             cursor = db.cursor()
             query = """
-                INSERT INTO user_kyc (username, selfie_url, id_url, status, faces_detected, leaked_urls) 
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO user_kyc (username, selfie_url, id_url, status, faces_detected, leaked_urls, email) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(query, (user_name, selfie_url, id_url, kyc_status, faces_count, leaks_str))
+            cursor.execute(query, (user_name, selfie_url, id_url, kyc_status, faces_count, leaks_str, user_email))
             db.commit()
-            print(f"🟢 Successfully saved {user_name} to DB with {len(found_leaks)} leaks!")
+            print(f"🟢 Successfully saved {user_name} to DB with email {user_email} and {len(found_leaks)} leaks!")
             cursor.close()
             db.close()
         except Exception as db_err:
@@ -150,7 +147,7 @@ def process_kyc_async(user_name, selfie_url, id_url):
 
 @app.route('/')
 def home():
-    return jsonify({"status": "Online", "message": "Deep crawling with logs enabled!"})
+    return jsonify({"status": "Online", "message": "Deep crawling with logs and email tracking enabled!"})
 
 @app.route('/kyc-submit', methods=['POST'])
 def kyc_submit():
@@ -161,10 +158,14 @@ def kyc_submit():
 
     detected_urls = []
     user_name = "Unknown User"
+    user_email = "" # Default empty email
 
     for key, value in data.items():
         if 'name' in key.lower():
             user_name = value
+        # Hidden field se aane wali email ko catch karna
+        if 'email' in key.lower():
+            user_email = value
         if isinstance(value, str) and (value.startswith('http://') or value.startswith('https://')):
             detected_urls.append((key, value))
 
@@ -182,8 +183,8 @@ def kyc_submit():
     if not id_url and len(detected_urls) > 1:
         id_url = detected_urls[1][1]
 
-    # Background thread trigger karein
-    threading.Thread(target=process_kyc_async, args=(user_name, selfie_url, id_url)).start()
+    # Background thread trigger karein (Passing user_email also)
+    threading.Thread(target=process_kyc_async, args=(user_name, selfie_url, id_url, user_email)).start()
 
     return jsonify({
         "status": "success",
