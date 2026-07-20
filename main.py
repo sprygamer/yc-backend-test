@@ -59,7 +59,6 @@ def crawl_image_on_internet(image_url):
             
             # 1. SOURCE 1: Visual Matches
             visual_matches = results.get("visual_matches", [])
-            print(f"DEBUG: Found {len(visual_matches)} visual matches in response.")
             for match in visual_matches:
                 link = match.get("link")
                 title = match.get("title", "Visual Match")
@@ -69,7 +68,6 @@ def crawl_image_on_internet(image_url):
 
             # 2. SOURCE 2: Knowledge Graph
             knowledge_graph = results.get("knowledge_graph", [])
-            print(f"DEBUG: Found {len(knowledge_graph)} knowledge graph items.")
             for entity in knowledge_graph:
                 link = entity.get("link")
                 title = entity.get("title", "Knowledge Source")
@@ -78,14 +76,12 @@ def crawl_image_on_internet(image_url):
 
             # 3. SOURCE 3: Reverse Image Search
             reverse_image_search = results.get("reverse_image_search", {}).get("pages_with_matching_images", [])
-            print(f"DEBUG: Found {len(reverse_image_search)} reverse image search pages.")
             for page in reverse_image_search:
                 link = page.get("url")
                 title = page.get("title", "Web Page Match")
                 if link and link not in leaked_links:
                     leaked_links.append(f"Web ({title}): {link}")
             
-            print(f"DEBUG: Filtered unique links count: {len(leaked_links)}")
             return leaked_links[:10]
         else:
             print(f"🔴 SerpApi Error: {response.status_code} - {response.text}")
@@ -147,48 +143,56 @@ def process_kyc_async(user_name, selfie_url, id_url, user_email):
 
 @app.route('/')
 def home():
-    return jsonify({"status": "Online", "message": "Deep crawling with logs and email tracking enabled!"})
+    return jsonify({"status": "Online", "message": "Deep crawling system running!"})
 
 @app.route('/kyc-submit', methods=['POST'])
 def kyc_submit():
+    # Render dashboard pe log dikhane ke liye incoming data print karein
+    print("📥 INCOMING WEBHOOK DATA RECEIVED:")
+    
     if request.is_json:
         data = request.get_json()
     else:
         data = request.form.to_dict()
+        
+    print(data) # Yeh Render logs me pura payload dikhayega
 
     detected_urls = []
     user_name = "Unknown User"
-    user_email = "" # Default empty email
+    user_email = "" 
 
     for key, value in data.items():
-        if 'name' in key.lower():
+        key_lower = key.lower()
+        # Flexbile matching for username / name / reg_username
+        if 'name' in key_lower or 'username' in key_lower:
             user_name = value
-        # Hidden field se aane wali email ko catch karna
-        if 'email' in key.lower():
+        # Flexible matching for email / reg_email
+        if 'email' in key_lower:
             user_email = value
         if isinstance(value, str) and (value.startswith('http://') or value.startswith('https://')):
-            detected_urls.append((key, value))
+            detected_urls.append((key_lower, value))
 
     selfie_url = None
     id_url = None
 
     for field_name, url in detected_urls:
-        if 'selfie' in field_name.lower():
+        if 'selfie' in field_name:
             selfie_url = url
-        elif 'id' in field_name.lower() or 'identity' in field_name.lower():
+        elif 'id' in field_name or 'identity' in field_name or 'proof' in field_name:
             id_url = url
     
+    # Fallback agar name match nahi hua tab bhi pehli do URLs utha lo
     if not selfie_url and len(detected_urls) > 0:
         selfie_url = detected_urls[0][1]
     if not id_url and len(detected_urls) > 1:
         id_url = detected_urls[1][1]
 
-    # Background thread trigger karein (Passing user_email also)
+    # Background thread trigger karein
     threading.Thread(target=process_kyc_async, args=(user_name, selfie_url, id_url, user_email)).start()
 
     return jsonify({
         "status": "success",
-        "message": "Form received and processing started!"
+        "message": "Form received successfully!"
     }), 200
 
 if __name__ == "__main__":
